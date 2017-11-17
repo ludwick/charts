@@ -2,18 +2,12 @@
 ## ref: http://kubernetes.io/docs/user-guide/compute-resources/
 ##
 resources:
-  master:
+  server:
     requests:
       memory: 200Mi
       cpu: 100m
     limits:
       memory: 700Mi
-  slave:
-    requests:
-      memory: 200Mi
-      cpu: 100m
-    limits:
-      memory: 200Mi
   sentinel:
     requests:
       memory: 200Mi
@@ -58,10 +52,124 @@ persistentVolume:
   ## Useful if the volume's root directory is not empty
   ##
   subPath: ""
-## Redis image version
-redis_image: quay.io/smile/redis:4.0.2
 ## replicas number for each component
 replicas:
-  master: 1
-  slave: 1
+  ## always have at least 2, preferably 3
+  server: 3
+  ## always at least 3 and preferably odd
   sentinel: 3
+
+## Redis image version
+## Original version: quay.io/smile/redis:4.0.2
+## Needs an image built from https://github.com/ludwick/docker-images/commit/997377ee301fe71e8bc9f0a766361de5e38ea610
+redis_image: ''
+
+# Fill in with kubectl api image
+kubectlImage: ''
+
+## container configurations
+redisConfig:
+  mountPath: "/etc/config"
+  overrideDefaults: true
+  # Values in these sections can be any line of configuration defined in redis
+  # docs and must exactly match. If values for any is empty, then that
+  # configuration value is not created. The strings %master-ip% and %master-port%
+  # will be substituted in slave & sentinel configurations. The values listed 
+  # here do not take effect without overrideDefaults above set to true but are
+  # set to reasonable values that override the defaults in the redis container.
+  server:
+    values:
+      - daemonize no
+      - pidfile /var/run/redis.pid
+      - port 6379
+      - tcp-backlog 511
+      - bind 0.0.0.0
+      - timeout 0
+      - tcp-keepalive 60
+      - loglevel notice
+      - logfile ""
+      - databases 16
+      - save 900 1
+      - save 300 10
+      - save 60 10000
+      - stop-writes-on-bgsave-error yes
+      - rdbcompression yes
+      - rdbchecksum yes
+      - dbfilename dump.rdb
+      - dir /redis-data
+      - slave-serve-stale-data yes
+      - slave-read-only yes
+      - min-slaves-to-write 1
+      - min-slaves-max-lag 10
+      - repl-diskless-sync no
+      - repl-diskless-sync-delay 5
+      - repl-disable-tcp-nodelay no
+      - slave-priority 100
+      - appendonly yes
+      - appendfilename "appendonly.aof"
+      - appendfsync everysec
+      - no-appendfsync-on-rewrite no
+      - auto-aof-rewrite-percentage 100
+      - auto-aof-rewrite-min-size 64mb
+      - aof-load-truncated yes
+      - lua-time-limit 5000
+      - slowlog-log-slower-than 10000
+      - slowlog-max-len 128
+      - latency-monitor-threshold 0
+      - notify-keyspace-events ""
+      - hash-max-ziplist-entries 512
+      - hash-max-ziplist-value 64
+      - list-max-ziplist-entries 512
+      - list-max-ziplist-value 64
+      - set-max-intset-entries 512
+      - zset-max-ziplist-entries 128
+      - zset-max-ziplist-value 64
+      - hll-sparse-max-bytes 3000
+      - activerehashing yes
+      - client-output-buffer-limit normal 0 0 0
+      - client-output-buffer-limit slave 256mb 64mb 60
+      - client-output-buffer-limit pubsub 32mb 8mb 60
+      - hz 10
+      - aof-rewrite-incremental-fsync yes
+  sentinel:
+    values:
+      - sentinel monitor mymaster %master-ip% %master-port% 2
+      ## these two values are lower than the defaults in the container
+      ## originally because it was 6 minutes to retry failover which
+      ## is way too long. It was also a 60s of master being away
+      ## before putting master into down state which is also way too
+      ## long.
+      - sentinel down-after-milliseconds mymaster 10000
+      - sentinel failover-timeout mymaster 15000
+      - sentinel parallel-syncs mymaster 1
+      - bind 0.0.0.0
+    
+## Adds a sidecar container with a watcher that when it receiveds an update
+## about a deleted pod, it resets the sentinel.
+## Note the image name here is notional. This image should be built from
+## this repo: https://github.com/ludwick/redis-sentinel-watcher
+redisSentinelWatcher:
+  enabled: true
+  imageName: gcr.io/your_project/redis-sentinel-watcher:0.1.4
+
+probes:
+  enabled: false
+  server:
+    readiness:
+      exec:
+        command: [ "redis-cli", "ping" ]
+    liveness:
+      ## wait a while to do liveness checks so we don't restart containers early
+      initialDelaySeconds: 60
+      exec:
+        command: [ "redis-cli", "ping" ]
+  sentinel:
+    readiness:
+      exec:
+        command: [ "redis-cli",  "-p", "26379", "ping" ]
+    liveness:
+      ## if we don't wait to do live checks, it might churn recreating
+      ## while waiting for the master to come up on new install.
+      initialDelaySeconds: 60
+      exec:
+        command: [ "redis-cli",  "-p", "26379", "ping" ]

@@ -1,0 +1,37 @@
+{{- if .Values.redisSentinelWatcher.enabled }}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "fullname" . }}-sentinel-watcher
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: redis-sentinel-watcher
+        role: sentinel-watcher
+{{ include "labels.standard" . | indent 8 }}
+    spec:
+      serviceAccount: {{ template "fullname" . }}-reader
+      containers:
+      - name: sentinel-watcher
+        image: {{ .Values.redisSentinelWatcher.imageName }}
+        imagePullPolicy: Always
+        env:
+          - name: K8SBASE
+            value: "http://127.0.0.1:8001"
+          - name: WATCH_APP
+            value: "redis-ha"
+          - name: WATCH_RELEASE
+            value: {{ .Release.Name }}
+      - name: sentinel-watcher-api
+        image: {{ .Values.kubectlImage }}
+        imagePullPolicy: Always
+        args:
+        - proxy
+        - "-p"
+        - '8001'
+        ports:
+        - containerPort: 8001
+          protocol: TCP
+{{- end -}}

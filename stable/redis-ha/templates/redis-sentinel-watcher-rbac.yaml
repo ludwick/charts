@@ -1,0 +1,36 @@
+{{- if .Values.redisSentinelWatcher.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ template "fullname" . }}-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "labels.standard" . | indent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: {{ template "fullname" . }}-reader
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "labels.standard" . | indent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["pods", "endpoints"]
+  verbs: ["watch", "get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: {{ template "fullname" . }}-reader-global
+  labels:
+{{ include "labels.standard" . | indent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "fullname" . }}-reader
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ template "fullname" . }}-reader
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

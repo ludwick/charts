@@ -1,0 +1,21 @@
+{{ if .Values.redisConfig.overrideDefaults }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "fullname" . }}-config-overrides
+  namespace: {{ .Release.Namespace }}
+data:
+  {{ if .Values.redisConfig.server.values }}
+  redis-server.conf: |-
+    {{ range .Values.redisConfig.server.values }}
+      {{- . }}
+    {{ end }}
+
+  {{ end }}
+  {{ if .Values.redisConfig.sentinel.values }}
+  redis-sentinel.conf: |-
+    {{ range .Values.redisConfig.sentinel.values }}
+      {{- . }}
+    {{ end }}
+  {{ end }}
+{{ end }}

@@ -43,3 +43,30 @@ Example output:
 {{- define "chartref" -}}
   {{- replace "+" "_" .Chart.Version | printf "%s-%s" .Chart.Name -}}
 {{- end -}}
+
+{{- define "redisConfigVolumeMount" -}}
+- mountPath: /etc/config
+  name: config-overrides
+{{- end -}}
+
+{{- define "redisConfigVolume" -}}
+- name: config-overrides
+  configMap:
+      name: {{ template "fullname" . }}-config-overrides
+{{- end -}}
+
+{{- define "redisEnv.common" -}}
+- name: DEFAULT_MASTER
+  # stateful set ensures this is a stable name
+  value: {{ template "fullname" . }}-server-0
+- name: SERVICE_NAME
+  value: redis
+- name: POD_NAME
+  valueFrom: 
+    fieldRef:
+      fieldPath: metadata.name
+- name: POD_IP
+  valueFrom: 
+    fieldRef:
+      fieldPath: status.podIP
+{{- end -}}

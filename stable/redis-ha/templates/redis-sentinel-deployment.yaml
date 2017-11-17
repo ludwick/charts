@@ -20,5 +20,20 @@ spec:
         env:
           - name: SENTINEL
             value: "true"
+{{ include "redisEnv.common" . | indent 10 }}
         ports:
           - containerPort: 26379
+        {{- if .Values.redisConfig.overrideDefaults }}
+        volumeMounts:
+{{ include "redisConfigVolumeMount" . | indent 10 }}
+        {{- end -}}
+        {{- if .Values.probes.enabled }}
+        livenessProbe:
+{{ toYaml .Values.probes.sentinel.liveness | indent 10 }}
+        readinessProbe:
+{{ toYaml .Values.probes.sentinel.readiness | indent 10 }}
+        {{- end }}
+      {{- if .Values.redisConfig.overrideDefaults }}
+      volumes:
+{{ include "redisConfigVolume" . | indent 8 }}
+      {{- end -}}

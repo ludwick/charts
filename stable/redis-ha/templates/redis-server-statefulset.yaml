@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    role: service
+{{ include "labels.standard" . | indent 4 }}
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    redis-node: "true"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    release: "{{ .Release.Name }}"
+    heritage: "{{ .Release.Service }}"
+  # this allows dns for pods to work
+  clusterIP: None
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ template "fullname" . }}-server
+  labels:
+    name: {{ template "name" . }}-server
+    redis-node: "true"
+    role: unknown
+{{ include "labels.standard" . | indent 4 }}
+spec:
+  serviceName: "redis"
+  replicas: {{ .Values.replicas.server }}
+  template:
+    metadata:
+      labels:
+        redis-sentinel: "false"
+        redis-node: "true"
+        role: none
+{{ include "labels.standard" . | indent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: redis
+          image: {{ .Values.redis_image }}
+          resources:
+{{ toYaml .Values.resources.server | indent 12 }}
+          ports:
+            - containerPort: 6379
+          env:
+            - name: REDIS_NODE
+              value: "true"
+{{ include "redisEnv.common" . | indent 12 }}
+          volumeMounts:
+            - mountPath: /redis-data
+              name: data
+            {{- if .Values.redisConfig.overrideDefaults }}
+{{ include "redisConfigVolumeMount" . | indent 12 }}
+            {{- end }}
+            {{- if .Values.probes.enabled }}
+          livenessProbe:
+{{ toYaml .Values.probes.server.liveness | indent 12 }}
+          readinessProbe:
+{{ toYaml .Values.probes.server.readiness | indent 12 }}
+            {{- end }}
+      volumes:
+      - name: data
+      {{- if .Values.persistentVolume.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ template "fullname" . }}-server
+      {{- else }}
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.redisConfig.overrideDefaults }}
+{{ include "redisConfigVolume" . | indent 6 }}
+      {{- end -}}
